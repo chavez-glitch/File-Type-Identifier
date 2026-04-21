@@ -49,6 +49,7 @@ def is_probably_text(data):
 
 
 def identify_file(filename):
+    print(f"[INFO] Opening file: {filename}")
     try:
         with open(filename, "rb") as file:
             # Header is used for fixed-signature checks at known offsets.
@@ -62,14 +63,19 @@ def identify_file(filename):
     except OSError as error:
         return f"Could not read file '{filename}': {error}"
 
+    print("[INFO] Checking known file signatures...")
     for offset, signature, filetype in MAGIC_SIGNATURES:
         if file_header[offset : offset + len(signature)] == signature:
+            print(f"[INFO] Matched signature at offset {offset}: {filetype}")
             return filetype
 
     # If no known binary signature matches, try a text heuristic.
+    print("[INFO] No signature match found. Running text-file heuristic...")
     if is_probably_text(file_sample):
+        print("[INFO] Content looks like plain text.")
         return "Text File (TXT)"
 
+    print("[INFO] File type could not be identified.")
     return "Unknown file type"
 
 #
@@ -84,9 +90,12 @@ def select_file():
 
 
 if __name__ == "__main__":
+    print("[INFO] Starting file type identifier...")
     filename = sys.argv[1] if len(sys.argv) > 1 else select_file()
 
     if not filename:
         print("No file selected.")
     else:
-        print(f"The file type is {identify_file(filename)}")
+        print(f"[INFO] File selected: {filename}")
+        file_type = identify_file(filename)
+        print(f"The file type is {file_type}")
