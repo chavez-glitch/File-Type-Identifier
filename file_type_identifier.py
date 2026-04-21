@@ -2,19 +2,59 @@ import sys
 import tkinter as tk
 from tkinter import filedialog
 
-MAGIC_NUMBERS = {
-    b"\x25\x50\x44\x46": "PDF",
-    b"\x89\x50\x4E\x47": "PNG Image",
-    b"\xFF\xD8\xFF": "JPEG Image",
-    b"\x50\x4B\x03\x04": "ZIP Archive",
-    b"\x4D\x5A": "Windows Executable (EXE)",
-}
+# Each entry is (byte_offset, signature_bytes, detected_type).
+MAGIC_SIGNATURES = [
+    (0, b"\x25\x50\x44\x46", "PDF"),
+    (0, b"\x89\x50\x4E\x47\x0D\x0A\x1A\x0A", "PNG Image"),
+    (0, b"\xFF\xD8\xFF", "JPEG Image"),
+    (0, b"GIF87a", "GIF Image"),
+    (0, b"GIF89a", "GIF Image"),
+    (0, b"BM", "BMP Image"),
+    (0, b"II*\x00", "TIFF Image (Little Endian)"),
+    (0, b"MM\x00*", "TIFF Image (Big Endian)"),
+    (0, b"RIFF", "RIFF Container"),
+    (8, b"WEBP", "WEBP Image"),
+    (8, b"WAVE", "WAV Audio"),
+    (8, b"AVI ", "AVI Video"),
+    (4, b"ftyp", "MP4/MOV Video"),
+    (0, b"ID3", "MP3 Audio"),
+    (0, b"\xFF\xFB", "MP3 Audio"),
+    (0, b"fLaC", "FLAC Audio"),
+    (0, b"OggS", "OGG Container"),
+    (0, b"\x50\x4B\x03\x04", "ZIP Archive"),
+    (0, b"\x50\x4B\x05\x06", "ZIP Archive (Empty)"),
+    (0, b"\x50\x4B\x07\x08", "ZIP Archive (Spanned)"),
+    (0, b"\x1F\x8B\x08", "GZIP Archive"),
+    (0, b"Rar!\x1A\x07\x00", "RAR Archive (v1.5+)"),
+    (0, b"Rar!\x1A\x07\x01\x00", "RAR Archive (v5+)"),
+    (0, b"7z\xBC\xAF\x27\x1C", "7-Zip Archive"),
+    (0, b"\x4D\x5A", "Windows Executable (EXE/DLL)"),
+]
+
+
+def is_probably_text(data):
+    # Empty files are treated as text.
+    if not data:
+        return True
+
+    # Null bytes are a strong indicator of binary data.
+    if b"\x00" in data:
+        return False
+
+    # Allow printable ASCII plus tabs/newlines/carriage returns.
+    text_bytes = sum(
+        1 for byte in data if byte in (9, 10, 13) or 32 <= byte <= 126
+    )
+    return (text_bytes / len(data)) > 0.95
 
 
 def identify_file(filename):
     try:
         with open(filename, "rb") as file:
-            file_header = file.read(8)
+            # Header is used for fixed-signature checks at known offsets.
+            file_header = file.read(64)
+            # Larger sample improves text-vs-binary fallback detection.
+            file_sample = file_header + file.read(960)
     except FileNotFoundError:
         return f"File not found: {filename}"
     except PermissionError:
@@ -22,14 +62,19 @@ def identify_file(filename):
     except OSError as error:
         return f"Could not read file '{filename}': {error}"
 
-    for magic, filetype in MAGIC_NUMBERS.items():
-        if file_header.startswith(magic):
+    for offset, signature, filetype in MAGIC_SIGNATURES:
+        if file_header[offset : offset + len(signature)] == signature:
             return filetype
+
+    # If no known binary signature matches, try a text heuristic.
+    if is_probably_text(file_sample):
+        return "Text File (TXT)"
 
     return "Unknown file type"
 
-
+#
 def select_file():
+    # Open a native file picker when no CLI path is provided.
     root = tk.Tk()
     root.withdraw()
     root.attributes("-topmost", True)
@@ -44,4 +89,4 @@ if __name__ == "__main__":
     if not filename:
         print("No file selected.")
     else:
-        print(identify_file(filename))
+        print(f"The file type is {identify_file(filename)}")
